@@ -95,6 +95,11 @@ class PdfDocumentFactoryImpl extends PdfDocumentFactory {
       );
 
   @override
+  Future<PdfDocument> createNew() {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<PdfDocument> openUri(
     Uri uri, {
     PdfPasswordProvider? passwordProvider,
@@ -153,6 +158,12 @@ class PdfDocumentFactoryImpl extends PdfDocumentFactory {
 
   static bool _isPasswordError(dynamic e) =>
       e.toString().startsWith('PasswordException:');
+
+  @override
+  Future<PdfPath> createPath({PathFillType fillType = PathFillType.nonZero}) {
+    // TODO: implement createPath
+    throw UnimplementedError();
+  }
 }
 
 class PdfDocumentWeb extends PdfDocument {
@@ -313,6 +324,13 @@ class PdfDocumentWeb extends PdfDocument {
       return obj.toString();
     }
   }
+
+  @override
+  Future<PdfPage> addNewPage(double width, double height, PdfPageRotation rotation) {
+    // TODO: implement addNewPage
+    throw UnimplementedError();
+  }
+
 }
 
 class PdfPageWeb extends PdfPage {
@@ -478,6 +496,18 @@ class PdfPageWeb extends PdfPage {
       }
     }
     return compact ? List.unmodifiable(links) : links;
+  }
+
+  @override
+  Future<void> addPath(PdfPath path) {
+    // TODO: implement addPath
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> addPaths(List<PdfPath> paths) {
+    // TODO: implement addPaths
+    throw UnimplementedError();
   }
 }
 

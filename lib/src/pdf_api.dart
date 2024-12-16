@@ -50,6 +50,10 @@ abstract class PdfDocumentFactory {
     bool firstAttemptByEmptyPassword = true,
   });
 
+  Future<PdfDocument> createNew();
+
+  Future<PdfPath> createPath({PathFillType fillType = PathFillType.nonZero});
+
   /// See [PdfDocument.openCustom].
   Future<PdfDocument> openCustom({
     required FutureOr<int> Function(Uint8List buffer, int position, int size)
@@ -271,6 +275,8 @@ abstract class PdfDocument {
   ///
   /// It does not mean the document contents (or the document files) are identical.
   bool isIdenticalDocumentHandle(Object? other);
+
+  Future<PdfPage> addNewPage(double width, double height, PdfPageRotation rotation);
 }
 
 /// Handles a PDF page in [PdfDocument].
@@ -345,6 +351,9 @@ abstract class PdfPage {
   /// if [compact] is true, it tries to reduce memory usage by compacting the link data.
   /// See [PdfLink.compact] for more info.
   Future<List<PdfLink>> loadLinks({bool compact = false});
+
+  Future<void> addPath(PdfPath path);
+  Future<void> addPaths(List<PdfPath> paths);
 }
 
 /// Page rotation.
@@ -1048,4 +1057,35 @@ class PdfException implements Exception {
 
 class PdfPasswordException extends PdfException {
   const PdfPasswordException(super.message);
+}
+
+abstract class PdfPath {
+  PdfPath({this.fillType=PathFillType.nonZero});
+
+  final PathFillType fillType;
+
+  /// Starts a new sub-path at the given coordinate.
+  Future<void> moveTo(double x, double y);
+
+  /// Adds a straight line segment from the current point to the given
+  /// point.
+  Future<void> lineTo(double x, double y);
+
+  /// Adds a cubic bezier segment that curves from the current point
+  /// to the given point (x3,y3), using the control points (x1,y1) and
+  /// (x2,y2).
+  ///
+  /// ![](https://flutter.github.io/assets-for-api-docs/assets/dart-ui/path_cubic_to.png#gh-light-mode-only)
+  /// ![](https://flutter.github.io/assets-for-api-docs/assets/dart-ui/path_cubic_to_dark.png#gh-dark-mode-only)
+  Future<void> cubicTo(double x1, double y1, double x2, double y2, double x3, double y3);
+
+  /// Closes the last sub-path, as if a straight line had been drawn
+  /// from the current point to the first point of the sub-path.
+  Future<void> close();
+
+  Future<void> setDrawMode({Color? fillColor, Color? strokeColor, double? strokeWidth});
+
+  Future<void> setBlendMode(String blendMode);
+
+  Future<void> dispose();
 }

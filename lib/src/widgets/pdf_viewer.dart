@@ -223,8 +223,6 @@ class _PdfViewerState extends State<PdfViewer>
   final _pageImagePartialRenderingRequests =
       <int, _PdfPartialImageRenderingRequest>{};
 
-  late final _canvasLinkPainter = _CanvasLinkPainter(this);
-
   // Changes to the stream rebuilds the viewer
   final _updateStream = BehaviorSubject<Matrix4>();
 
@@ -310,7 +308,6 @@ class _PdfViewerState extends State<PdfViewer>
     _selectionChangedThrottleTimer?.cancel();
     _stopInteraction();
     _releaseAllImages();
-    _canvasLinkPainter.resetAll();
     _pageNumber = null;
     _initialized = false;
     _txController.removeListener(_onMatrixChanged);
@@ -355,7 +352,6 @@ class _PdfViewerState extends State<PdfViewer>
     _animController.dispose();
     widget.documentRef.resolveListenable().removeListener(_onDocumentChanged);
     _releaseAllImages();
-    _canvasLinkPainter.resetAll();
     _txController.removeListener(_onMatrixChanged);
     _controller?._attach(null);
     _txController.dispose();
@@ -372,11 +368,6 @@ class _PdfViewerState extends State<PdfViewer>
     if (listenable.error != null) {
       return Container(
         color: widget.params.backgroundColor,
-        child: (widget.params.errorBannerBuilder ?? _defaultErrorBannerBuilder)(
-            context,
-            listenable.error!,
-            listenable.stackTrace,
-            widget.documentRef),
       );
     }
     if (_document == null) {
@@ -437,58 +428,48 @@ class _PdfViewerState extends State<PdfViewer>
                 _determineCurrentPage();
                 _calcAlternativeFitScale();
                 _calcZoomStopTable();
-                return selectableRegionInjector(
-                  Builder(builder: (context) {
-                    return Stack(
+                _buildImageCache();
+                return Builder(builder: (context) {
+                  final page = _document!.pages[0];
+                  final realSize = _pageImages[page.pageNumber];
+                  final partial = _pageImagesPartial[page.pageNumber];
+                  final customPaint = CustomPaint(
+                    painter: _CustomPainter.fromState(this, realSize, partial),
+                    size: _layout!.documentSize,
+                    isComplex: true,
+                  );
+                  return iv.InteractiveViewer(
+                    transformationController: _txController,
+                    constrained: false,
+                    boundaryMargin: widget.params.boundaryMargin ?? const EdgeInsets.all(double.infinity),
+                    maxScale: widget.params.maxScale,
+                    minScale: _alternativeFitScale != null ? _alternativeFitScale! / 2 : 0.1,
+                    panAxis: widget.params.panAxis,
+                    panEnabled: widget.params.panEnabled,
+                    scaleEnabled: widget.params.scaleEnabled,
+                    onInteractionEnd: _onInteractionEnd,
+                    onInteractionStart: _onInteractionStart,
+                    onInteractionUpdate: widget.params.onInteractionUpdate,
+                    onTapUp: widget.params.onTapUp,
+                    onLongPressStart: widget.params.onLongPressStart,
+                    interactionEndFrictionCoefficient: widget.params.interactionEndFrictionCoefficient,
+                    onWheelDelta: widget.params.scrollByMouseWheel != null ? _onWheelDelta : null,
+                    // PDF pages
+                    child: Stack(
                       children: [
-                        iv.InteractiveViewer(
-                          transformationController: _txController,
-                          constrained: false,
-                          boundaryMargin: widget.params.boundaryMargin ??
-                              const EdgeInsets.all(double.infinity),
-                          maxScale: widget.params.maxScale,
-                          minScale: _alternativeFitScale != null
-                              ? _alternativeFitScale! / 2
-                              : minScale,
-                          panAxis: widget.params.panAxis,
-                          panEnabled: widget.params.panEnabled,
-                          scaleEnabled: widget.params.scaleEnabled,
-                          onInteractionEnd: _onInteractionEnd,
-                          onInteractionStart: _onInteractionStart,
-                          onInteractionUpdate:
-                              widget.params.onInteractionUpdate,
-                          interactionEndFrictionCoefficient:
-                              widget.params.interactionEndFrictionCoefficient,
-                          onWheelDelta: widget.params.scrollByMouseWheel != null
-                              ? _onWheelDelta
-                              : null,
-                          // PDF pages
-                          child: CustomPaint(
-                            foregroundPainter:
-                                _CustomPainter.fromFunction(_customPaint),
-                            size: _layout!.documentSize,
-                          ),
-                        ),
-                        ..._buildPageOverlayWidgets(context),
-                        if (_canvasLinkPainter.isEnabled)
-                          SelectionContainer.disabled(
-                            child: _canvasLinkPainter
-                                .linkHandlingOverlay(_viewSize!),
-                          ),
                         if (widget.params.viewerOverlayBuilder != null)
-                          ...widget
-                              .params
-                              .viewerOverlayBuilder!(
+                          ...widget.params.viewerOverlayBuilder!(
                             context,
                             _viewSize!,
-                            _canvasLinkPainter._handleLinkTap,
+                            _layout!.documentSize,
+                            customPaint,
                           )
-                              .map(
-                                  (e) => SelectionContainer.disabled(child: e)),
+                        else
+                          customPaint,
                       ],
-                    );
-                  }),
-                );
+                    ),
+                  );
+                });
               }),
         ),
       );
@@ -949,13 +930,85 @@ class _PdfViewerState extends State<PdfViewer>
   }
 
   /// [_CustomPainter] calls the function to paint PDF pages.
-  void _customPaint(ui.Canvas canvas, ui.Size size) {
+  void _customPaint(ui.Canvas canvas, _PdfImageWithScale? realSize, _PdfImageWithScaleAndRect? partial) {
+    final targetRect = _getCacheExtentRect();
+    final scale = MediaQuery.of(context).devicePixelRatio * _currentZoom;
+
+    for (int i = 0; i < _document!.pages.length; i++) {
+      final rect = _layout!.pageLayouts[i];
+      final intersection = rect.intersect(targetRect);
+      if (intersection.isEmpty) {
+        continue;
+      }
+
+      final page = _document!.pages[i];
+      final scaleLimit = widget.params.getPageRenderingScale
+              ?.call(context, page, _controller!, widget.params.onePassRenderingScaleThreshold) ??
+          widget.params.onePassRenderingScaleThreshold;
+
+      if (widget.params.pageBackgroundPaintCallbacks != null) {
+        for (final callback in widget.params.pageBackgroundPaintCallbacks!) {
+          callback(canvas, rect, page);
+        }
+      }
+
+      final pageScale = scale * max(rect.width / page.width, rect.height / page.height);
+      bool drawPartial = pageScale > scaleLimit && partial != null;
+      if (kDebugMode) {
+        debugPrint('custom paint, scale: $pageScale');
+      }
+      if (realSize != null) {
+        if (drawPartial) {
+          canvas.save();
+          final excludeRect = partial.rect;
+          // 排除设定的矩形区域
+          canvas.clipRect(excludeRect, doAntiAlias: false, clipOp: ui.ClipOp.difference);
+        }
+
+        canvas.drawImageRect(
+          realSize.image,
+          Rect.fromLTWH(
+            0,
+            0,
+            realSize.image.width.toDouble(),
+            realSize.image.height.toDouble(),
+          ),
+          rect,
+          Paint()..filterQuality = FilterQuality.high,
+        );
+
+        if (drawPartial) {
+          canvas.restore();
+        }
+      }
+
+      if (drawPartial) {
+        canvas.drawImageRect(
+          partial.image,
+          Rect.fromLTWH(
+            0,
+            0,
+            partial.image.width.toDouble(),
+            partial.image.height.toDouble(),
+          ),
+          partial.rect,
+          Paint()..filterQuality = FilterQuality.high,
+        );
+      }
+
+      if (widget.params.pagePaintCallbacks != null) {
+        for (final callback in widget.params.pagePaintCallbacks!) {
+          callback(canvas, rect, page);
+        }
+      }
+    }
+  }
+
+  void _buildImageCache() {
     final targetRect = _getCacheExtentRect();
     final scale = MediaQuery.of(context).devicePixelRatio * _currentZoom;
 
     final unusedPageList = <int>[];
-    final dropShadowPaint = widget.params.pageDropShadow?.toPaint()
-      ?..style = PaintingStyle.fill;
 
     for (int i = 0; i < _document!.pages.length; i++) {
       final rect = _layout!.pageLayouts[i];
@@ -971,82 +1024,18 @@ class _PdfViewerState extends State<PdfViewer>
 
       final page = _document!.pages[i];
       final realSize = _pageImages[page.pageNumber];
-      final partial = _pageImagesPartial[page.pageNumber];
 
-      final scaleLimit = widget.params.getPageRenderingScale?.call(
-              context,
-              page,
-              _controller!,
-              widget.params.onePassRenderingScaleThreshold) ??
+      final scaleLimit = widget.params.getPageRenderingScale
+          ?.call(context, page, _controller!, widget.params.onePassRenderingScaleThreshold) ??
           widget.params.onePassRenderingScaleThreshold;
 
-      if (dropShadowPaint != null) {
-        final offset = widget.params.pageDropShadow!.offset;
-        final spread = widget.params.pageDropShadow!.spreadRadius;
-        final shadowRect = rect
-            .translate(offset.dx, offset.dy)
-            .inflateHV(horizontal: spread, vertical: spread);
-        canvas.drawRect(shadowRect, dropShadowPaint);
-      }
-
-      if (widget.params.pageBackgroundPaintCallbacks != null) {
-        for (final callback in widget.params.pageBackgroundPaintCallbacks!) {
-          callback(canvas, rect, page);
-        }
-      }
-
-      if (realSize != null) {
-        canvas.drawImageRect(
-          realSize.image,
-          Rect.fromLTWH(
-            0,
-            0,
-            realSize.image.width.toDouble(),
-            realSize.image.height.toDouble(),
-          ),
-          rect,
-          Paint()..filterQuality = FilterQuality.high,
-        );
-      } else {
-        canvas.drawRect(
-            rect,
-            Paint()
-              ..color = Colors.white
-              ..style = PaintingStyle.fill);
-      }
-
+      final pageScale = scale * max(rect.width / page.width, rect.height / page.height);
       if (realSize == null || realSize.scale != scaleLimit) {
         _requestPageImageCached(page, scaleLimit);
       }
 
-      final pageScale =
-          scale * max(rect.width / page.width, rect.height / page.height);
       if (pageScale > scaleLimit) {
         _requestPartialImage(page, scale);
-      }
-
-      if (pageScale > scaleLimit && partial != null) {
-        canvas.drawImageRect(
-          partial.image,
-          Rect.fromLTWH(
-            0,
-            0,
-            partial.image.width.toDouble(),
-            partial.image.height.toDouble(),
-          ),
-          partial.rect,
-          Paint()..filterQuality = FilterQuality.high,
-        );
-      }
-
-      if (_canvasLinkPainter.isEnabled) {
-        _canvasLinkPainter.paintLinkHighlights(canvas, rect, page);
-      }
-
-      if (widget.params.pagePaintCallbacks != null) {
-        for (final callback in widget.params.pagePaintCallbacks!) {
-          callback(canvas, rect, page);
-        }
       }
 
       if (unusedPageList.isNotEmpty) {
@@ -1120,13 +1109,16 @@ class _PdfViewerState extends State<PdfViewer>
     if (_pageImages[page.pageNumber]?.scale == scale) return;
     final cancellationToken = page.createCancellationToken();
     _addCancellationToken(page.pageNumber, cancellationToken);
+    if (kDebugMode) {
+      debugPrint('_cachePageImage, scale: $scale');
+    }
     await synchronized(() async {
       if (!mounted || cancellationToken.isCanceled) return;
       if (_pageImages[page.pageNumber]?.scale == scale) return;
       final img = await page.render(
         fullWidth: width,
         fullHeight: height,
-        backgroundColor: Colors.white,
+        backgroundColor: widget.params.pageBackgroundColor,
         annotationRenderingMode: widget.params.annotationRenderingMode,
         cancellationToken: cancellationToken,
       );
@@ -1150,15 +1142,20 @@ class _PdfViewerState extends State<PdfViewer>
 
   Future<void> _requestPartialImage(PdfPage page, double scale) async {
     _pageImagePartialRenderingRequests[page.pageNumber]?.cancel();
+    if (_isInteractionGoingOn) return;
+    if (kDebugMode) {
+      debugPrint('_requestPartialImage scale: $scale');
+    }
     final cancellationToken = page.createCancellationToken();
     _pageImagePartialRenderingRequests[page.pageNumber] =
         _PdfPartialImageRenderingRequest(
       Timer(
         const Duration(milliseconds: 300),
         () async {
-          if (!mounted || cancellationToken.isCanceled) return;
-          final newImage =
-              await _createPartialImage(page, scale, cancellationToken);
+          if (!mounted || cancellationToken.isCanceled) {
+            return;
+          }
+          final newImage = await _createPartialImage(page, scale, cancellationToken);
           if (_pageImagesPartial[page.pageNumber] == newImage) return;
           _pageImagesPartial.remove(page.pageNumber)?.dispose();
           if (newImage != null) {
@@ -1182,6 +1179,9 @@ class _PdfViewerState extends State<PdfViewer>
     if (prev?.rect == rect && prev?.scale == scale) return prev;
     if (rect.width < 1 || rect.height < 1) return null;
     final inPageRect = rect.translate(-pageRect.left, -pageRect.top);
+    if (kDebugMode) {
+      debugPrint('_createPartialImage, inPageRect: $inPageRect');
+    }
 
     if (!mounted || cancellationToken.isCanceled) return null;
 
@@ -1192,7 +1192,7 @@ class _PdfViewerState extends State<PdfViewer>
       height: (inPageRect.height * scale).toInt(),
       fullWidth: pageRect.width * scale,
       fullHeight: pageRect.height * scale,
-      backgroundColor: Colors.white,
+      backgroundColor: widget.params.pageBackgroundColor,
       annotationRenderingMode: widget.params.annotationRenderingMode,
       cancellationToken: cancellationToken,
     );
@@ -2187,152 +2187,21 @@ extension RectExt on Rect {
 /// Create a [CustomPainter] from a paint function.
 class _CustomPainter extends CustomPainter {
   /// Create a [CustomPainter] from a paint function.
-  const _CustomPainter.fromFunction(this.paintFunction);
-  final void Function(ui.Canvas canvas, ui.Size size) paintFunction;
-  @override
-  void paint(ui.Canvas canvas, ui.Size size) => paintFunction(canvas, size);
+  const _CustomPainter.fromState(this.state, this.realSize, this.partial);
+
+  final _PdfViewerState state;
+  final _PdfImageWithScale? realSize;
+  final _PdfImageWithScaleAndRect? partial;
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-Widget _defaultErrorBannerBuilder(
-  BuildContext context,
-  Object error,
-  StackTrace? stackTrace,
-  PdfDocumentRef documentRef,
-) {
-  return pdfErrorWidget(
-    context,
-    error,
-    stackTrace: stackTrace,
-  );
-}
-
-/// Handles the link painting and tap handling.
-class _CanvasLinkPainter {
-  _CanvasLinkPainter(this._state);
-  final _PdfViewerState _state;
-  MouseCursor _cursor = MouseCursor.defer;
-  final _links = <int, List<PdfLink>>{};
-
-  bool get isEnabled => _state.widget.params.linkHandlerParams != null;
-
-  /// Reset all the internal data.
-  void resetAll() {
-    _cursor = MouseCursor.defer;
-    _links.clear();
+  void paint(ui.Canvas canvas, ui.Size size) {
+    state._customPaint(canvas, realSize, partial);
   }
 
-  /// Release the page data.
-  void releaseLinksForPage(int pageNumber) {
-    _links.remove(pageNumber);
-  }
-
-  List<PdfLink>? _ensureLinksLoaded(PdfPage page, {void Function()? onLoaded}) {
-    final links = _links[page.pageNumber];
-    if (links != null) return links;
-    synchronized(() async {
-      final links = _links[page.pageNumber];
-      if (links != null) return links;
-      _links[page.pageNumber] = await page.loadLinks(compact: true);
-      if (onLoaded != null) {
-        onLoaded();
-      } else {
-        _state._invalidate();
-      }
-    });
-    return null;
-  }
-
-  PdfLink? _findLinkAtPosition(Offset position) {
-    final hitResult = _state._getPdfPageHitTestResult(
-      position,
-      useDocumentLayoutCoordinates: false,
-    );
-    if (hitResult == null) return null;
-    final links = _ensureLinksLoaded(hitResult.page);
-    if (links == null) return null;
-    for (final link in links) {
-      for (final rect in link.rects) {
-        if (rect.containsOffset(hitResult.offset)) {
-          return link;
-        }
-      }
-    }
-    return null;
-  }
-
-  bool _handleLinkTap(Offset tapPosition) {
-    _cursor = MouseCursor.defer;
-    final link = _findLinkAtPosition(tapPosition);
-    if (link != null) {
-      final onLinkTap = _state.widget.params.linkHandlerParams?.onLinkTap;
-      if (onLinkTap != null) {
-        onLinkTap(link);
-        return true;
-      }
-    }
-    _state._clearAllTextSelections();
-    return false;
-  }
-
-  void _handleLinkMouseCursor(
-      Offset position, void Function(void Function()) setState) {
-    final link = _findLinkAtPosition(position);
-    final newCursor =
-        link == null ? MouseCursor.defer : SystemMouseCursors.click;
-    if (newCursor != _cursor) {
-      _cursor = newCursor;
-      setState(() {});
-    }
-  }
-
-  /// Creates a [GestureDetector] for handling link taps and mouse cursor.
-  Widget linkHandlingOverlay(Size size) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      // link taps
-      onTapUp: (details) => _handleLinkTap(details.localPosition),
-      child: StatefulBuilder(builder: (context, setState) {
-        return MouseRegion(
-          hitTestBehavior: HitTestBehavior.translucent,
-          onHover: (event) =>
-              _handleLinkMouseCursor(event.localPosition, setState),
-          onExit: (event) {
-            _cursor = MouseCursor.defer;
-            setState(() {});
-          },
-          cursor: _cursor,
-          child: IgnorePointer(
-            child: SizedBox(width: size.width, height: size.height),
-          ),
-        );
-      }),
-    );
-  }
-
-  /// Paints the link highlights.
-  void paintLinkHighlights(Canvas canvas, Rect pageRect, PdfPage page) {
-    final links = _ensureLinksLoaded(page);
-    if (links == null) return;
-
-    final customPainter = _state.widget.params.linkHandlerParams?.customPainter;
-
-    if (customPainter != null) {
-      customPainter.call(canvas, pageRect, page, links);
-      return;
-    }
-
-    final paint = Paint()
-      ..color = _state.widget.params.linkHandlerParams?.linkColor ??
-          Colors.blue.withOpacity(0.2)
-      ..style = PaintingStyle.fill;
-    for (final link in links) {
-      for (final rect in link.rects) {
-        final rectLink = rect.toRectInPageRect(page: page, pageRect: pageRect);
-        canvas.drawRect(rectLink, paint);
-      }
-    }
+  @override
+  bool shouldRepaint(covariant _CustomPainter oldDelegate) {
+    bool result = realSize != oldDelegate.realSize
+        || partial != oldDelegate.partial;
+    return result;
   }
 }

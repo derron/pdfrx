@@ -109,6 +109,22 @@ class PdfDocumentFactoryImpl extends PdfDocumentFactory {
     );
   }
 
+  @override
+  Future<PdfDocument> createNew() async {
+    _init();
+    return _openByFunc(
+      (password) async => (await backgroundWorker).computeWithArena(
+        (arena, params) {
+          final doc = pdfium.FPDF_CreateNewDocument();
+          return doc.address;
+        },
+        (),
+      ),
+      sourceName: 'memory',
+      passwordProvider: null,
+    );
+  }
+
   Future<PdfDocument> _openData(
     Uint8List data,
     String sourceName, {
@@ -284,6 +300,18 @@ class PdfDocumentFactoryImpl extends PdfDocumentFactory {
           'Failed to load PDF document (FPDF_GetLastError=${pdfium.FPDF_GetLastError()}).');
     }
   }
+
+  @override
+  Future<PdfPath> createPath({PathFillType fillType = PathFillType.nonZero}) async {
+    _init();
+    final path = await (await backgroundWorker).compute(
+          (params) {
+          return pdfium.FPDFPageObj_CreateNewPath(0, 0);
+      },
+      (),
+    );
+    return PdfPathPdfium._(path, fillType: fillType);
+  }
 }
 
 extension FpdfUtf8StringExt on String {
@@ -402,7 +430,8 @@ class PdfDocumentPdfium extends PdfDocument {
           rotation: PdfPageRotation.values[pageData.rotation],
         ));
       }
-      pdfDoc.pages = List.unmodifiable(pages);
+      // pdfDoc.pages = List.unmodifiable(pages);
+      pdfDoc.pages = pages;
       return pdfDoc;
     } catch (e) {
       pdfDoc?.dispose();
@@ -491,6 +520,34 @@ class PdfDocumentPdfium extends PdfDocument {
     }
     return siblings;
   }
+
+  @override
+  Future<PdfPage> addNewPage(double width, double height, PdfPageRotation rotation) async {
+    if (isDisposed) {
+      throw PdfException(
+          'Can not add page to disposed PDF document.');
+    }
+    final pageNumber = await (await backgroundWorker).compute(
+          (params) => using((arena) {
+        final document = pdfium_bindings.FPDF_DOCUMENT.fromAddress(params.document);
+        final page = pdfium.FPDFPage_New(document, params.index, params.width, params.height);
+        pdfium.FPDFPage_SetRotation(page, params.rotation);
+        pdfium.FPDF_ClosePage(page);
+        return params.index + 1;
+      }),
+      (document: document.address, width: width, height: height, index: pages.length, rotation: rotation.index),
+    );
+    final pdfPage = PdfPagePdfium._(
+      document: this,
+      pageNumber: pageNumber,
+      width: width,
+      height: height,
+      rotation: rotation,
+    );
+    pages.add(pdfPage);
+    return pdfPage;
+  }
+
 }
 
 class PdfPagePdfium extends PdfPage {
@@ -513,6 +570,17 @@ class PdfPagePdfium extends PdfPage {
     required this.height,
     required this.rotation,
   });
+
+  void setBufferBackgroundColor(Pointer<Uint8> buffer, int width, int height, Color color) {
+    int value = (color.blue << 24) | (color.green << 16) | (color.red << 8) | color.alpha;
+    Pointer<Uint32> uint32Buffer = buffer.cast<Uint32>();
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        int offset = y * width + x;
+        uint32Buffer[offset] = value;
+      }
+    }
+  }
 
   @override
   Future<PdfImage?> render({
@@ -545,6 +613,8 @@ class PdfPagePdfium extends PdfPage {
     Pointer<Uint8> buffer = nullptr;
     try {
       buffer = malloc.allocate<Uint8>(width * height * rgbaSize);
+      // FPDFBitmap_FillRect填充的时候有bug，这里直接操作buffer设置背景色
+      setBufferBackgroundColor(buffer, width, height, backgroundColor);
       final isSucceeded = await using(
         (arena) async {
           final cancelFlag = arena.allocate<Bool>(sizeOf<Bool>());
@@ -575,14 +645,14 @@ class PdfPagePdfium extends PdfPage {
                   throw PdfException(
                       'FPDF_LoadPage(${params.pageNumber}) failed.');
                 }
-                pdfium.FPDFBitmap_FillRect(
-                  bmp,
-                  0,
-                  0,
-                  params.width,
-                  params.height,
-                  params.backgroundColor,
-                );
+                // pdfium.FPDFBitmap_FillRect(
+                //   bmp,
+                //   0,
+                //   0,
+                //   params.width,
+                //   params.height,
+                //   params.backgroundColor,
+                // );
                 pdfium.FPDF_RenderPageBitmap(
                   bmp,
                   page,
@@ -826,6 +896,67 @@ class PdfPagePdfium extends PdfPage {
         }
       default:
         return null;
+    }
+  }
+
+  @override
+  Future<void> addPath(PdfPath path) async {
+    if (document.isDisposed || path is! PdfPathPdfium) return;
+    if (path.isDisposed) {
+      return;
+    }
+    await (await backgroundWorker).compute(
+          (params) => using(
+            (arena) {
+          final document =
+          pdfium_bindings.FPDF_DOCUMENT.fromAddress(params.document);
+          final page =
+          pdfium.FPDF_LoadPage(document, params.pageNumber - 1);
+          final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+          try {
+            pdfium.FPDFPage_InsertObject(page, path);
+            pdfium.FPDFPage_GenerateContent(page);
+          } finally {
+            pdfium.FPDF_ClosePage(page);
+          }
+        },
+      ),
+      (document: document.document.address, pageNumber: pageNumber, path: path.path.address),
+    );
+    // 添加成功后，path的所有权转移到Page，自己则不需要单独释放了
+    path.isDisposed = true;
+  }
+
+  @override
+  Future<void> addPaths(List<PdfPath> paths) async {
+    if (document.isDisposed) return;
+    List<PdfPathPdfium> pdfPaths = paths.where((p) => p is PdfPathPdfium && !p.isDisposed)
+        .map((p) => p as PdfPathPdfium).toList();
+    if (pdfPaths.isEmpty) return;
+    await (await backgroundWorker).compute(
+          (params) => using(
+            (arena) {
+          final document =
+          pdfium_bindings.FPDF_DOCUMENT.fromAddress(params.document);
+          final page =
+          pdfium.FPDF_LoadPage(document, params.pageNumber - 1);
+          try {
+            for (var address in params.paths) {
+              final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(address);
+              pdfium.FPDFPage_InsertObject(page, path);
+            }
+            pdfium.FPDFPage_GenerateContent(page);
+          } finally {
+            pdfium.FPDF_ClosePage(page);
+          }
+        },
+      ),
+      (document: document.document.address, pageNumber: pageNumber,
+      paths: pdfPaths.map((p) => p.path.address).toList()),
+    );
+    // 添加成功后，path的所有权转移到Page，自己则不需要单独释放了
+    for (var path in pdfPaths) {
+      path.isDisposed = true;
     }
   }
 }
@@ -1149,4 +1280,142 @@ PdfDest? _pdfDestFromDest(
     );
   }
   return null;
+}
+
+
+class PdfPathPdfium extends PdfPath {
+  final pdfium_bindings.FPDF_PAGEOBJECT path;
+  bool isDisposed = false;
+
+  PdfPathPdfium._(this.path, {super.fillType = PathFillType.nonZero});
+
+  @override
+  Future<void> close() async {
+    if (isDisposed) {
+      return;
+    }
+    await (await backgroundWorker).compute(
+          (params) {
+        final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+        pdfium.FPDFPath_Close(path);
+      },
+      (
+      path: path.address,
+      ),
+    );
+  }
+
+  @override
+  Future<void> cubicTo(double x1, double y1, double x2, double y2, double x3, double y3) async {
+    if (isDisposed) {
+      return;
+    }
+    await (await backgroundWorker).compute(
+          (params) {
+        final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+        pdfium.FPDFPath_BezierTo(path, params.x1, params.y1, params.x2, params.y2, params.x3, params.y3);
+      },
+      (
+      path: path.address, x1: x1, y1: y1, x2: x2, y2: y2, x3: x3, y3: y3
+      ),
+    );
+  }
+
+  @override
+  Future<void> lineTo(double x, double y) async {
+    if (isDisposed) {
+      return;
+    }
+    await (await backgroundWorker).compute(
+          (params) {
+        final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+        pdfium.FPDFPath_LineTo(path, params.x, params.y);
+      },
+      (
+      path: path.address, x: x, y: y
+      ),
+    );
+  }
+
+  @override
+  Future<void> moveTo(double x, double y) async {
+    if (isDisposed) {
+      return;
+    }
+    await (await backgroundWorker).compute(
+          (params) {
+        final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+        pdfium.FPDFPath_MoveTo(path, params.x, params.y);
+      },
+      (
+      path: path.address, x: x, y: y
+      ),
+    );
+  }
+
+  @override
+  Future<void> setDrawMode({ui.Color? fillColor, ui.Color? strokeColor, double? strokeWidth}) async {
+    if (isDisposed) {
+      return;
+    }
+    await (await backgroundWorker).compute(
+          (params) {
+        final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+        if (params.fill >= 1) {
+          pdfium.FPDFPageObj_SetFillColor(path, params.fillR, params.fillG, params.fillB, 255);
+        }
+        if (params.storke == 1) {
+          pdfium.FPDFPageObj_SetStrokeColor(path, params.strokeR, params.strokeG, params.strokeB, 255);
+          pdfium.FPDFPageObj_SetStrokeWidth(path, params.strokeWidth);
+        }
+        pdfium.FPDFPath_SetDrawMode(path, params.fill, params.storke);
+      },
+      (
+      path: path.address,
+      fill: fillColor != null ? (fillType == PathFillType.nonZero ? 2 : 1) : 0,
+      fillR: fillColor?.red ?? 0,
+      fillG: fillColor?.green ?? 0,
+      fillB: fillColor?.blue ?? 0,
+      storke: strokeColor != null ? 1 : 0,
+      strokeWidth: strokeWidth ?? 0,
+      strokeR: strokeColor?.red ?? 0,
+      strokeG: strokeColor?.green ?? 0,
+      strokeB: strokeColor?.blue ?? 0,
+      ),
+    );
+  }
+
+  @override
+  Future<void> dispose() async {
+    if (!isDisposed) {
+      isDisposed = true;
+      await (await backgroundWorker).compute(
+        (params) {
+            final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+            debugPrint('FPDFPageObj_Destroy path: ${path.address}');
+            pdfium.FPDFPageObj_Destroy(path);
+        },
+        (
+        path: path.address,
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<void> setBlendMode(String blendMode) async {
+    if (isDisposed) {
+      return;
+    }
+    await (await backgroundWorker).computeWithArena(
+          (arena, params) {
+        final path = pdfium_bindings.FPDF_PAGEOBJECT.fromAddress(params.path);
+        pdfium.FPDFPageObj_SetBlendMode(path, params.mode.toUtf8(arena));
+      },
+      (
+      path: path.address, mode: blendMode
+      ),
+    );
+  }
+
 }

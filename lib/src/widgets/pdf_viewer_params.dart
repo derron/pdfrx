@@ -13,6 +13,7 @@ class PdfViewerParams {
   const PdfViewerParams({
     this.margin = 8.0,
     this.backgroundColor = Colors.grey,
+    this.pageBackgroundColor = Colors.white,
     this.layoutPages,
     this.normalizeMatrix,
     this.maxScale = 8.0,
@@ -39,6 +40,8 @@ class PdfViewerParams {
     this.onInteractionEnd,
     this.onInteractionStart,
     this.onInteractionUpdate,
+    this.onTapUp,
+    this.onLongPressStart,
     this.interactionEndFrictionCoefficient = _kDrag,
     this.onDocumentChanged,
     this.calculateInitialPageNumber,
@@ -72,6 +75,9 @@ class PdfViewerParams {
 
   /// Background color of the viewer.
   final Color backgroundColor;
+
+  /// Background color of page
+  final Color pageBackgroundColor;
 
   /// Function to customize the layout of the pages.
   ///
@@ -228,6 +234,10 @@ class PdfViewerParams {
 
   /// See [InteractiveViewer.onInteractionUpdate] for details.
   final GestureScaleUpdateCallback? onInteractionUpdate;
+
+  final GestureTapUpCallback? onTapUp;
+
+  final GestureLongPressStartCallback? onLongPressStart;
 
   /// See [InteractiveViewer.interactionEndFrictionCoefficient] for details.
   final double interactionEndFrictionCoefficient;
@@ -494,6 +504,7 @@ class PdfViewerParams {
         forceReload ||
         other.margin != margin ||
         other.backgroundColor != backgroundColor ||
+        other.pageBackgroundColor != pageBackgroundColor ||
         other.maxScale != maxScale ||
         other.minScale != minScale ||
         other.useAlternativeFitScaleAsMinScale !=
@@ -527,6 +538,7 @@ class PdfViewerParams {
 
     return other.margin == margin &&
         other.backgroundColor == backgroundColor &&
+        other.pageBackgroundColor == pageBackgroundColor &&
         other.maxScale == maxScale &&
         other.minScale == minScale &&
         other.useAlternativeFitScaleAsMinScale ==
@@ -547,6 +559,8 @@ class PdfViewerParams {
         other.onInteractionEnd == onInteractionEnd &&
         other.onInteractionStart == onInteractionStart &&
         other.onInteractionUpdate == onInteractionUpdate &&
+        other.onTapUp == onTapUp &&
+        other.onLongPressStart == onLongPressStart &&
         other.interactionEndFrictionCoefficient ==
             interactionEndFrictionCoefficient &&
         other.onDocumentChanged == onDocumentChanged &&
@@ -580,6 +594,7 @@ class PdfViewerParams {
   int get hashCode {
     return margin.hashCode ^
         backgroundColor.hashCode ^
+        pageBackgroundColor.hashCode ^
         maxScale.hashCode ^
         minScale.hashCode ^
         useAlternativeFitScaleAsMinScale.hashCode ^
@@ -598,6 +613,8 @@ class PdfViewerParams {
         onInteractionEnd.hashCode ^
         onInteractionStart.hashCode ^
         onInteractionUpdate.hashCode ^
+        onTapUp.hashCode ^
+        onLongPressStart.hashCode ^
         interactionEndFrictionCoefficient.hashCode ^
         onDocumentChanged.hashCode ^
         calculateInitialPageNumber.hashCode ^
@@ -707,8 +724,9 @@ typedef PdfMatrixNormalizeFunction = Matrix4 Function(
 /// [handleLinkTap] is a function to handle link tap. For more details, see [PdfViewerParams.viewerOverlayBuilder].
 typedef PdfViewerOverlaysBuilder = List<Widget> Function(
   BuildContext context,
-  Size size,
-  PdfViewerHandleLinkTap handleLinkTap,
+  Size viewSize,
+  Size documentSize,
+  Widget child,
 );
 
 /// Function to handle link tap.
