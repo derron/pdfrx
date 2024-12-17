@@ -225,6 +225,7 @@ class _PdfViewerState extends State<PdfViewer>
 
   // Changes to the stream rebuilds the viewer
   final _updateStream = BehaviorSubject<Matrix4>();
+  bool _invalidateEnable = true;
 
   final _selectables = SplayTreeMap<int, PdfPageTextSelectable>();
   Timer? _selectionChangedThrottleTimer;
@@ -945,6 +946,8 @@ class _PdfViewerState extends State<PdfViewer>
       final scaleLimit = widget.params.getPageRenderingScale
               ?.call(context, page, _controller!, widget.params.onePassRenderingScaleThreshold) ??
           widget.params.onePassRenderingScaleThreshold;
+      final pageScale = scale * max(rect.width / page.width, rect.height / page.height);
+      bool drawPartial = pageScale > scaleLimit && partial != null && widget.params.enablePartialImage;
 
       if (widget.params.pageBackgroundPaintCallbacks != null) {
         for (final callback in widget.params.pageBackgroundPaintCallbacks!) {
@@ -952,15 +955,13 @@ class _PdfViewerState extends State<PdfViewer>
         }
       }
 
-      final pageScale = scale * max(rect.width / page.width, rect.height / page.height);
-      bool drawPartial = pageScale > scaleLimit && partial != null;
       if (kDebugMode) {
         debugPrint('custom paint, scale: $pageScale');
       }
       if (realSize != null) {
         if (drawPartial) {
           canvas.save();
-          final excludeRect = partial.rect;
+          final excludeRect = ui.Rect.fromCenter(center: partial.rect.center, width: partial.rect.width - 1 , height: partial.rect.height - 1);
           // 排除设定的矩形区域
           canvas.clipRect(excludeRect, doAntiAlias: false, clipOp: ui.ClipOp.difference);
         }
@@ -1034,7 +1035,7 @@ class _PdfViewerState extends State<PdfViewer>
         _requestPageImageCached(page, scaleLimit);
       }
 
-      if (pageScale > scaleLimit) {
+      if (pageScale > scaleLimit && widget.params.enablePartialImage) {
         _requestPartialImage(page, scale);
       }
 
@@ -1078,16 +1079,68 @@ class _PdfViewerState extends State<PdfViewer>
     );
   }
 
-  void _invalidate() => _updateStream.add(_txController.value);
+  void _invalidate({bool force = false}) {
+    if (!_invalidateEnable || (_isInteractionGoingOn && !force)) return;
+    _updateStream.add(_txController.value);
+  }
 
-  Future<void> _requestPageImageCached(PdfPage page, double scale) async {
+  Future<void> _invalidateImage(int? tag) async {
+    final targetRect = _getCacheExtentRect();
+    final scale = MediaQuery.of(context).devicePixelRatio * _currentZoom;
+
+    for (int i = 0; i < _document!.pages.length; i++) {
+      final rect = _layout!.pageLayouts[i];
+      final intersection = rect.intersect(targetRect);
+      if (intersection.isEmpty || !mounted) {
+        continue;
+      }
+
+      final page = _document!.pages[i];
+      final scaleLimit = widget.params.getPageRenderingScale
+          ?.call(context, page, _controller!, widget.params.onePassRenderingScaleThreshold) ??
+          widget.params.onePassRenderingScaleThreshold;
+      final pageScale = scale * max(rect.width / page.width, rect.height / page.height);
+      final partialImageRequested = pageScale > scaleLimit && widget.params.enablePartialImage;
+
+      _requestPageImageCached(page, scaleLimit, force: true, tag: tag, partialImageRequested: partialImageRequested);
+      if (partialImageRequested) {
+        _requestPartialImage(page, scale, force: true, tag: tag, partialImageRequested: partialImageRequested);
+      }
+    }
+  }
+
+  void setInvalidateEnable(bool enable) {
+    if (_invalidateEnable == enable) return;
+    _invalidateEnable = enable;
+    if (enable) {
+      _invalidate(force: true);
+    }
+  }
+
+  Future<ui.Image?> getPageImage({int pageNumber = 1}) async {
+    ui.Image? image = _pageImages[pageNumber]?.image;
+    if (image != null) {
+      return image;
+    }
+    final page = _document!.pages[pageNumber - 1];
+    final img = await page.render(
+      backgroundColor: widget.params.pageBackgroundColor,
+      annotationRenderingMode: widget.params.annotationRenderingMode,
+    );
+    image = await img?.createImage();
+    img?.dispose();
+    return image;
+  }
+
+  Future<void> _requestPageImageCached(PdfPage page, double scale,
+      {bool force = false, int? tag, bool partialImageRequested = false}) async {
     final width = page.width * scale;
     final height = page.height * scale;
     if (width < 1 || height < 1) return;
 
     // if this is the first time to render the page, render it immediately
     if (!_pageImages.containsKey(page.pageNumber)) {
-      _cachePageImage(page, width, height, scale);
+      await _cachePageImage(page, width, height, scale, force, tag, partialImageRequested);
       return;
     }
 
@@ -1095,7 +1148,7 @@ class _PdfViewerState extends State<PdfViewer>
     if (!mounted) return;
     _pageImageRenderingTimers[page.pageNumber] = Timer(
       const Duration(milliseconds: 50),
-      () => _cachePageImage(page, width, height, scale),
+      () => _cachePageImage(page, width, height, scale, force, tag, partialImageRequested),
     );
   }
 
@@ -1104,17 +1157,20 @@ class _PdfViewerState extends State<PdfViewer>
     double width,
     double height,
     double scale,
+    bool force,
+    int? tag,
+    bool partialImageRequested,
   ) async {
     if (!mounted) return;
-    if (_pageImages[page.pageNumber]?.scale == scale) return;
+    if (_pageImages[page.pageNumber]?.scale == scale && !force) return;
     final cancellationToken = page.createCancellationToken();
     _addCancellationToken(page.pageNumber, cancellationToken);
-    if (kDebugMode) {
-      debugPrint('_cachePageImage, scale: $scale');
-    }
     await synchronized(() async {
       if (!mounted || cancellationToken.isCanceled) return;
-      if (_pageImages[page.pageNumber]?.scale == scale) return;
+      if (_pageImages[page.pageNumber]?.scale == scale && !force) return;
+      if (kDebugMode) {
+        debugPrint('_cachePageImage, scale: $scale, tag: $tag');
+      }
       final img = await page.render(
         fullWidth: width,
         fullHeight: height,
@@ -1136,17 +1192,16 @@ class _PdfViewerState extends State<PdfViewer>
       _pageImages[page.pageNumber]?.dispose();
       _pageImages[page.pageNumber] = newImage;
       img.dispose();
-      _invalidate();
+      widget.params.onImageChanged?.call(page, true, partialImageRequested, newImage.image, tag);
+      _invalidate(force: force);
     });
   }
 
-  Future<void> _requestPartialImage(PdfPage page, double scale) async {
+  Future<void> _requestPartialImage(PdfPage page, double scale,
+      {bool force = false, int? tag, bool partialImageRequested = false}) async {
     _pageImagePartialRenderingRequests[page.pageNumber]?.cancel();
-    if (_isInteractionGoingOn) return;
-    if (kDebugMode) {
-      debugPrint('_requestPartialImage scale: $scale');
-    }
     final cancellationToken = page.createCancellationToken();
+    if (_isInteractionGoingOn && !force) return;
     _pageImagePartialRenderingRequests[page.pageNumber] =
         _PdfPartialImageRenderingRequest(
       Timer(
@@ -1155,13 +1210,14 @@ class _PdfViewerState extends State<PdfViewer>
           if (!mounted || cancellationToken.isCanceled) {
             return;
           }
-          final newImage = await _createPartialImage(page, scale, cancellationToken);
+          final newImage = await _createPartialImage(page, scale, cancellationToken, force);
           if (_pageImagesPartial[page.pageNumber] == newImage) return;
           _pageImagesPartial.remove(page.pageNumber)?.dispose();
           if (newImage != null) {
             _pageImagesPartial[page.pageNumber] = newImage;
+            widget.params.onImageChanged?.call(page, false, partialImageRequested, newImage.image, tag);
           }
-          _invalidate();
+          _invalidate(force: force);
         },
       ),
       cancellationToken,
@@ -1171,20 +1227,17 @@ class _PdfViewerState extends State<PdfViewer>
   Future<_PdfImageWithScaleAndRect?> _createPartialImage(
     PdfPage page,
     double scale,
-    PdfPageRenderCancellationToken cancellationToken,
+    PdfPageRenderCancellationToken cancellationToken, bool force,
   ) async {
     final pageRect = _layout!.pageLayouts[page.pageNumber - 1];
     final rect = pageRect.intersect(_visibleRect);
     final prev = _pageImagesPartial[page.pageNumber];
-    if (prev?.rect == rect && prev?.scale == scale) return prev;
+    if (prev?.rect == rect && prev?.scale == scale && !force) return prev;
     if (rect.width < 1 || rect.height < 1) return null;
     final inPageRect = rect.translate(-pageRect.left, -pageRect.top);
-    if (kDebugMode) {
-      debugPrint('_createPartialImage, inPageRect: $inPageRect');
-    }
-
     if (!mounted || cancellationToken.isCanceled) return null;
-
+    Stopwatch stopwatch = Stopwatch();
+    stopwatch.start();
     final img = await page.render(
       x: (inPageRect.left * scale).toInt(),
       y: (inPageRect.top * scale).toInt(),
@@ -1196,6 +1249,10 @@ class _PdfViewerState extends State<PdfViewer>
       annotationRenderingMode: widget.params.annotationRenderingMode,
       cancellationToken: cancellationToken,
     );
+    stopwatch.stop();
+    if (kDebugMode) {
+      debugPrint('_createPartialImage, inPageRect: $inPageRect costs ${stopwatch.elapsedMilliseconds}ms');
+    }
     if (img == null) return null;
     if (!mounted || cancellationToken.isCanceled) {
       img.dispose();
@@ -2105,6 +2162,9 @@ class PdfViewerController extends ValueListenable<Matrix4> {
   }
 
   void invalidate() => _state._invalidate();
+  Future<void> invalidateImage(int tag) => _state._invalidateImage(tag);
+  void setInvalidateEnable(bool enable) => _state.setInvalidateEnable(enable);
+  Future<ui.Image?> getPageImage({int pageNumber = 1}) => _state.getPageImage(pageNumber: pageNumber);
 }
 
 extension PdfMatrix4Ext on Matrix4 {

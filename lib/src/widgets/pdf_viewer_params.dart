@@ -27,6 +27,7 @@ class PdfViewerParams {
     this.pageAnchorEnd = PdfPageAnchor.bottom,
     this.onePassRenderingScaleThreshold = 200 / 72,
     this.enableTextSelection = false,
+    this.enablePartialImage = true,
     this.matchTextColor,
     this.activeMatchTextColor,
     this.pageDropShadow = const BoxShadow(
@@ -44,6 +45,7 @@ class PdfViewerParams {
     this.onLongPressStart,
     this.interactionEndFrictionCoefficient = _kDrag,
     this.onDocumentChanged,
+    this.onImageChanged,
     this.calculateInitialPageNumber,
     this.calculateCurrentPageNumber,
     this.onViewerReady,
@@ -195,6 +197,8 @@ class PdfViewerParams {
   /// - [perPageSelectableRegionInjector] to inject your own [SelectableRegion] on each page
   final bool enableTextSelection;
 
+  final bool enablePartialImage;
+
   /// Color for text search match.
   ///
   /// If null, the default color is `Colors.yellow.withOpacity(0.5)`.
@@ -251,6 +255,8 @@ class PdfViewerParams {
   /// The function is called even if the document is null (it means the document is unloaded).
   /// If you want to be notified when the viewer is ready to interact, use [onViewerReady] instead.
   final PdfViewerDocumentChangedCallback? onDocumentChanged;
+
+  final PdfViewerImageCallback? onImageChanged;
 
   /// Function called when the viewer is ready.
   ///
@@ -517,6 +523,7 @@ class PdfViewerParams {
         other.onePassRenderingScaleThreshold !=
             onePassRenderingScaleThreshold ||
         other.enableTextSelection != enableTextSelection ||
+        other.enablePartialImage != enablePartialImage ||
         other.matchTextColor != matchTextColor ||
         other.activeMatchTextColor != activeMatchTextColor ||
         other.pageDropShadow != pageDropShadow ||
@@ -551,6 +558,7 @@ class PdfViewerParams {
         other.onePassRenderingScaleThreshold ==
             onePassRenderingScaleThreshold &&
         other.enableTextSelection == enableTextSelection &&
+        other.enablePartialImage == enablePartialImage &&
         other.matchTextColor == matchTextColor &&
         other.activeMatchTextColor == activeMatchTextColor &&
         other.pageDropShadow == pageDropShadow &&
@@ -564,6 +572,7 @@ class PdfViewerParams {
         other.interactionEndFrictionCoefficient ==
             interactionEndFrictionCoefficient &&
         other.onDocumentChanged == onDocumentChanged &&
+        other.onImageChanged == onImageChanged &&
         other.calculateInitialPageNumber == calculateInitialPageNumber &&
         other.calculateCurrentPageNumber == calculateCurrentPageNumber &&
         other.onViewerReady == onViewerReady &&
@@ -605,6 +614,7 @@ class PdfViewerParams {
         pageAnchorEnd.hashCode ^
         onePassRenderingScaleThreshold.hashCode ^
         enableTextSelection.hashCode ^
+        enablePartialImage.hashCode ^
         matchTextColor.hashCode ^
         activeMatchTextColor.hashCode ^
         pageDropShadow.hashCode ^
@@ -617,6 +627,7 @@ class PdfViewerParams {
         onLongPressStart.hashCode ^
         interactionEndFrictionCoefficient.hashCode ^
         onDocumentChanged.hashCode ^
+        onImageChanged.hashCode ^
         calculateInitialPageNumber.hashCode ^
         calculateCurrentPageNumber.hashCode ^
         onViewerReady.hashCode ^
@@ -645,6 +656,8 @@ class PdfViewerParams {
 
 /// Function to notify that the document is loaded/changed.
 typedef PdfViewerDocumentChangedCallback = void Function(PdfDocument? document);
+
+typedef PdfViewerImageCallback = void Function(PdfPage page, bool fullImage, bool partialImageRequested, ui.Image image, int? tag);
 
 /// Function to calculate the initial page number.
 ///

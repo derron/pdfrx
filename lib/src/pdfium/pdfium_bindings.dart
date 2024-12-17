@@ -69,20 +69,6 @@ class pdfium {
   late final _FPDF_SetSandBoxPolicy =
       _FPDF_SetSandBoxPolicyPtr.asFunction<void Function(int, int)>();
 
-  int FPDF_SetPrintMode(
-    int mode,
-  ) {
-    return _FPDF_SetPrintMode(
-      mode,
-    );
-  }
-
-  late final _FPDF_SetPrintModePtr =
-      _lookup<ffi.NativeFunction<FPDF_BOOL Function(ffi.Int)>>(
-          'FPDF_SetPrintMode');
-  late final _FPDF_SetPrintMode =
-      _FPDF_SetPrintModePtr.asFunction<int Function(int)>();
-
   FPDF_DOCUMENT FPDF_LoadDocument(
     FPDF_STRING file_path,
     FPDF_BYTESTRING password,
@@ -402,35 +388,6 @@ class pdfium {
   late final _FPDF_GetPageSizeByIndex = _FPDF_GetPageSizeByIndexPtr.asFunction<
       int Function(FPDF_DOCUMENT, int, ffi.Pointer<ffi.Double>,
           ffi.Pointer<ffi.Double>)>();
-
-  void FPDF_RenderPage(
-    HDC dc,
-    FPDF_PAGE page,
-    int start_x,
-    int start_y,
-    int size_x,
-    int size_y,
-    int rotate,
-    int flags,
-  ) {
-    return _FPDF_RenderPage(
-      dc,
-      page,
-      start_x,
-      start_y,
-      size_x,
-      size_y,
-      rotate,
-      flags,
-    );
-  }
-
-  late final _FPDF_RenderPagePtr = _lookup<
-      ffi.NativeFunction<
-          ffi.Void Function(HDC, FPDF_PAGE, ffi.Int, ffi.Int, ffi.Int, ffi.Int,
-              ffi.Int, ffi.Int)>>('FPDF_RenderPage');
-  late final _FPDF_RenderPage = _FPDF_RenderPagePtr.asFunction<
-      void Function(HDC, FPDF_PAGE, int, int, int, int, int, int)>();
 
   void FPDF_RenderPageBitmap(
     FPDF_BITMAP bitmap,
@@ -830,16 +787,16 @@ class pdfium {
       _FPDF_VIEWERREF_GetPrintPageRangeElementPtr.asFunction<
           int Function(FPDF_PAGERANGE, int)>();
 
-  int FPDF_VIEWERREF_GetDuplex(
+  _FPDF_DUPLEXTYPE_ FPDF_VIEWERREF_GetDuplex(
     FPDF_DOCUMENT document,
   ) {
-    return _FPDF_VIEWERREF_GetDuplex(
+    return _FPDF_DUPLEXTYPE_.fromValue(_FPDF_VIEWERREF_GetDuplex(
       document,
-    );
+    ));
   }
 
   late final _FPDF_VIEWERREF_GetDuplexPtr =
-      _lookup<ffi.NativeFunction<ffi.Int32 Function(FPDF_DOCUMENT)>>(
+      _lookup<ffi.NativeFunction<ffi.UnsignedInt Function(FPDF_DOCUMENT)>>(
           'FPDF_VIEWERREF_GetDuplex');
   late final _FPDF_VIEWERREF_GetDuplex =
       _FPDF_VIEWERREF_GetDuplexPtr.asFunction<int Function(FPDF_DOCUMENT)>();
@@ -2029,9 +1986,9 @@ class pdfium {
   late final _FPDFAnnot_RemoveObject = _FPDFAnnot_RemoveObjectPtr.asFunction<
       int Function(FPDF_ANNOTATION, int)>();
 
-  int FPDFAnnot_SetColor(
+  DartFPDF_BOOL FPDFAnnot_SetColor(
     FPDF_ANNOTATION annot,
-    int type,
+    FPDFANNOT_COLORTYPE type,
     int R,
     int G,
     int B,
@@ -2039,7 +1996,7 @@ class pdfium {
   ) {
     return _FPDFAnnot_SetColor(
       annot,
-      type,
+      type.value,
       R,
       G,
       B,
@@ -2051,7 +2008,7 @@ class pdfium {
       ffi.NativeFunction<
           FPDF_BOOL Function(
               FPDF_ANNOTATION,
-              ffi.Int32,
+              ffi.UnsignedInt,
               ffi.UnsignedInt,
               ffi.UnsignedInt,
               ffi.UnsignedInt,
@@ -2059,9 +2016,9 @@ class pdfium {
   late final _FPDFAnnot_SetColor = _FPDFAnnot_SetColorPtr.asFunction<
       int Function(FPDF_ANNOTATION, int, int, int, int, int)>();
 
-  int FPDFAnnot_GetColor(
+  DartFPDF_BOOL FPDFAnnot_GetColor(
     FPDF_ANNOTATION annot,
-    int type,
+    FPDFANNOT_COLORTYPE type,
     ffi.Pointer<ffi.UnsignedInt> R,
     ffi.Pointer<ffi.UnsignedInt> G,
     ffi.Pointer<ffi.UnsignedInt> B,
@@ -2069,7 +2026,7 @@ class pdfium {
   ) {
     return _FPDFAnnot_GetColor(
       annot,
-      type,
+      type.value,
       R,
       G,
       B,
@@ -2081,7 +2038,7 @@ class pdfium {
       ffi.NativeFunction<
           FPDF_BOOL Function(
               FPDF_ANNOTATION,
-              ffi.Int32,
+              ffi.UnsignedInt,
               ffi.Pointer<ffi.UnsignedInt>,
               ffi.Pointer<ffi.UnsignedInt>,
               ffi.Pointer<ffi.UnsignedInt>,
@@ -2772,6 +2729,38 @@ class pdfium {
   late final _FPDFAnnot_GetFontSize = _FPDFAnnot_GetFontSizePtr.asFunction<
       int Function(FPDF_FORMHANDLE, FPDF_ANNOTATION, ffi.Pointer<ffi.Float>)>();
 
+  int FPDFAnnot_GetFontColor(
+    FPDF_FORMHANDLE hHandle,
+    FPDF_ANNOTATION annot,
+    ffi.Pointer<ffi.UnsignedInt> R,
+    ffi.Pointer<ffi.UnsignedInt> G,
+    ffi.Pointer<ffi.UnsignedInt> B,
+  ) {
+    return _FPDFAnnot_GetFontColor(
+      hHandle,
+      annot,
+      R,
+      G,
+      B,
+    );
+  }
+
+  late final _FPDFAnnot_GetFontColorPtr = _lookup<
+      ffi.NativeFunction<
+          FPDF_BOOL Function(
+              FPDF_FORMHANDLE,
+              FPDF_ANNOTATION,
+              ffi.Pointer<ffi.UnsignedInt>,
+              ffi.Pointer<ffi.UnsignedInt>,
+              ffi.Pointer<ffi.UnsignedInt>)>>('FPDFAnnot_GetFontColor');
+  late final _FPDFAnnot_GetFontColor = _FPDFAnnot_GetFontColorPtr.asFunction<
+      int Function(
+          FPDF_FORMHANDLE,
+          FPDF_ANNOTATION,
+          ffi.Pointer<ffi.UnsignedInt>,
+          ffi.Pointer<ffi.UnsignedInt>,
+          ffi.Pointer<ffi.UnsignedInt>)>();
+
   int FPDFAnnot_IsChecked(
     FPDF_FORMHANDLE hHandle,
     FPDF_ANNOTATION annot,
@@ -3138,18 +3127,18 @@ class pdfium {
   late final _FPDFText_GetFontWeight =
       _FPDFText_GetFontWeightPtr.asFunction<int Function(FPDF_TEXTPAGE, int)>();
 
-  int FPDFText_GetTextRenderMode(
+  FPDF_TEXT_RENDERMODE FPDFText_GetTextRenderMode(
     FPDF_TEXTPAGE text_page,
     int index,
   ) {
-    return _FPDFText_GetTextRenderMode(
+    return FPDF_TEXT_RENDERMODE.fromValue(_FPDFText_GetTextRenderMode(
       text_page,
       index,
-    );
+    ));
   }
 
   late final _FPDFText_GetTextRenderModePtr =
-      _lookup<ffi.NativeFunction<ffi.Int32 Function(FPDF_TEXTPAGE, ffi.Int)>>(
+      _lookup<ffi.NativeFunction<ffi.Int Function(FPDF_TEXTPAGE, ffi.Int)>>(
           'FPDFText_GetTextRenderMode');
   late final _FPDFText_GetTextRenderMode = _FPDFText_GetTextRenderModePtr
       .asFunction<int Function(FPDF_TEXTPAGE, int)>();
@@ -4139,13 +4128,13 @@ class pdfium {
 
   int FPDF_GetFileIdentifier(
     FPDF_DOCUMENT document,
-    int id_type,
+    FPDF_FILEIDTYPE id_type,
     ffi.Pointer<ffi.Void> buffer,
     int buflen,
   ) {
     return _FPDF_GetFileIdentifier(
       document,
-      id_type,
+      id_type.value,
       buffer,
       buflen,
     );
@@ -4155,7 +4144,7 @@ class pdfium {
       ffi.NativeFunction<
           ffi.UnsignedLong Function(
               FPDF_DOCUMENT,
-              ffi.Int32,
+              ffi.UnsignedInt,
               ffi.Pointer<ffi.Void>,
               ffi.UnsignedLong)>>('FPDF_GetFileIdentifier');
   late final _FPDF_GetFileIdentifier = _FPDF_GetFileIdentifierPtr.asFunction<
@@ -5914,33 +5903,33 @@ class pdfium {
   late final _FPDFPageObj_CreateTextObj = _FPDFPageObj_CreateTextObjPtr
       .asFunction<FPDF_PAGEOBJECT Function(FPDF_DOCUMENT, FPDF_FONT, double)>();
 
-  int FPDFTextObj_GetTextRenderMode(
+  FPDF_TEXT_RENDERMODE FPDFTextObj_GetTextRenderMode(
     FPDF_PAGEOBJECT text,
   ) {
-    return _FPDFTextObj_GetTextRenderMode(
+    return FPDF_TEXT_RENDERMODE.fromValue(_FPDFTextObj_GetTextRenderMode(
       text,
-    );
+    ));
   }
 
   late final _FPDFTextObj_GetTextRenderModePtr =
-      _lookup<ffi.NativeFunction<ffi.Int32 Function(FPDF_PAGEOBJECT)>>(
+      _lookup<ffi.NativeFunction<ffi.Int Function(FPDF_PAGEOBJECT)>>(
           'FPDFTextObj_GetTextRenderMode');
   late final _FPDFTextObj_GetTextRenderMode = _FPDFTextObj_GetTextRenderModePtr
       .asFunction<int Function(FPDF_PAGEOBJECT)>();
 
-  int FPDFTextObj_SetTextRenderMode(
+  DartFPDF_BOOL FPDFTextObj_SetTextRenderMode(
     FPDF_PAGEOBJECT text,
-    int render_mode,
+    FPDF_TEXT_RENDERMODE render_mode,
   ) {
     return _FPDFTextObj_SetTextRenderMode(
       text,
-      render_mode,
+      render_mode.value,
     );
   }
 
-  late final _FPDFTextObj_SetTextRenderModePtr = _lookup<
-          ffi.NativeFunction<FPDF_BOOL Function(FPDF_PAGEOBJECT, ffi.Int32)>>(
-      'FPDFTextObj_SetTextRenderMode');
+  late final _FPDFTextObj_SetTextRenderModePtr =
+      _lookup<ffi.NativeFunction<FPDF_BOOL Function(FPDF_PAGEOBJECT, ffi.Int)>>(
+          'FPDFTextObj_SetTextRenderMode');
   late final _FPDFTextObj_SetTextRenderMode = _FPDFTextObj_SetTextRenderModePtr
       .asFunction<int Function(FPDF_PAGEOBJECT, int)>();
 
@@ -6247,19 +6236,84 @@ class pdfium {
               FPDF_PAGEOBJECT, ffi.UnsignedLong)>>('FPDFFormObj_GetObject');
   late final _FPDFFormObj_GetObject = _FPDFFormObj_GetObjectPtr.asFunction<
       FPDF_PAGEOBJECT Function(FPDF_PAGEOBJECT, int)>();
+
+  int FPDF_SaveAsCopy(
+    FPDF_DOCUMENT document,
+    ffi.Pointer<FPDF_FILEWRITE> pFileWrite,
+    int flags,
+  ) {
+    return _FPDF_SaveAsCopy(
+      document,
+      pFileWrite,
+      flags,
+    );
+  }
+
+  late final _FPDF_SaveAsCopyPtr = _lookup<
+      ffi.NativeFunction<
+          FPDF_BOOL Function(FPDF_DOCUMENT, ffi.Pointer<FPDF_FILEWRITE>,
+              FPDF_DWORD)>>('FPDF_SaveAsCopy');
+  late final _FPDF_SaveAsCopy = _FPDF_SaveAsCopyPtr.asFunction<
+      int Function(FPDF_DOCUMENT, ffi.Pointer<FPDF_FILEWRITE>, int)>();
+
+  int FPDF_SaveWithVersion(
+    FPDF_DOCUMENT document,
+    ffi.Pointer<FPDF_FILEWRITE> pFileWrite,
+    int flags,
+    int fileVersion,
+  ) {
+    return _FPDF_SaveWithVersion(
+      document,
+      pFileWrite,
+      flags,
+      fileVersion,
+    );
+  }
+
+  late final _FPDF_SaveWithVersionPtr = _lookup<
+      ffi.NativeFunction<
+          FPDF_BOOL Function(FPDF_DOCUMENT, ffi.Pointer<FPDF_FILEWRITE>,
+              FPDF_DWORD, ffi.Int)>>('FPDF_SaveWithVersion');
+  late final _FPDF_SaveWithVersion = _FPDF_SaveWithVersionPtr.asFunction<
+      int Function(FPDF_DOCUMENT, ffi.Pointer<FPDF_FILEWRITE>, int, int)>();
 }
 
-abstract class FPDF_TEXT_RENDERMODE {
-  static const int FPDF_TEXTRENDERMODE_UNKNOWN = -1;
-  static const int FPDF_TEXTRENDERMODE_FILL = 0;
-  static const int FPDF_TEXTRENDERMODE_STROKE = 1;
-  static const int FPDF_TEXTRENDERMODE_FILL_STROKE = 2;
-  static const int FPDF_TEXTRENDERMODE_INVISIBLE = 3;
-  static const int FPDF_TEXTRENDERMODE_FILL_CLIP = 4;
-  static const int FPDF_TEXTRENDERMODE_STROKE_CLIP = 5;
-  static const int FPDF_TEXTRENDERMODE_FILL_STROKE_CLIP = 6;
-  static const int FPDF_TEXTRENDERMODE_CLIP = 7;
-  static const int FPDF_TEXTRENDERMODE_LAST = 7;
+enum FPDF_TEXT_RENDERMODE {
+  FPDF_TEXTRENDERMODE_UNKNOWN(-1),
+  FPDF_TEXTRENDERMODE_FILL(0),
+  FPDF_TEXTRENDERMODE_STROKE(1),
+  FPDF_TEXTRENDERMODE_FILL_STROKE(2),
+  FPDF_TEXTRENDERMODE_INVISIBLE(3),
+  FPDF_TEXTRENDERMODE_FILL_CLIP(4),
+  FPDF_TEXTRENDERMODE_STROKE_CLIP(5),
+  FPDF_TEXTRENDERMODE_FILL_STROKE_CLIP(6),
+  FPDF_TEXTRENDERMODE_CLIP(7);
+
+  static const FPDF_TEXTRENDERMODE_LAST = FPDF_TEXTRENDERMODE_CLIP;
+
+  final int value;
+  const FPDF_TEXT_RENDERMODE(this.value);
+
+  static FPDF_TEXT_RENDERMODE fromValue(int value) => switch (value) {
+        -1 => FPDF_TEXTRENDERMODE_UNKNOWN,
+        0 => FPDF_TEXTRENDERMODE_FILL,
+        1 => FPDF_TEXTRENDERMODE_STROKE,
+        2 => FPDF_TEXTRENDERMODE_FILL_STROKE,
+        3 => FPDF_TEXTRENDERMODE_INVISIBLE,
+        4 => FPDF_TEXTRENDERMODE_FILL_CLIP,
+        5 => FPDF_TEXTRENDERMODE_STROKE_CLIP,
+        6 => FPDF_TEXTRENDERMODE_FILL_STROKE_CLIP,
+        7 => FPDF_TEXTRENDERMODE_CLIP,
+        _ =>
+          throw ArgumentError("Unknown value for FPDF_TEXT_RENDERMODE: $value"),
+      };
+
+  @override
+  String toString() {
+    if (this == FPDF_TEXTRENDERMODE_CLIP)
+      return "FPDF_TEXT_RENDERMODE.FPDF_TEXTRENDERMODE_CLIP, FPDF_TEXT_RENDERMODE.FPDF_TEXTRENDERMODE_LAST";
+    return super.toString();
+  }
 }
 
 final class fpdf_action_t__ extends ffi.Opaque {}
@@ -6320,11 +6374,22 @@ final class fpdf_widget_t__ extends ffi.Opaque {}
 
 final class fpdf_xobject_t__ extends ffi.Opaque {}
 
-abstract class _FPDF_DUPLEXTYPE_ {
-  static const int DuplexUndefined = 0;
-  static const int Simplex = 1;
-  static const int DuplexFlipShortEdge = 2;
-  static const int DuplexFlipLongEdge = 3;
+enum _FPDF_DUPLEXTYPE_ {
+  DuplexUndefined(0),
+  Simplex(1),
+  DuplexFlipShortEdge(2),
+  DuplexFlipLongEdge(3);
+
+  final int value;
+  const _FPDF_DUPLEXTYPE_(this.value);
+
+  static _FPDF_DUPLEXTYPE_ fromValue(int value) => switch (value) {
+        0 => DuplexUndefined,
+        1 => Simplex,
+        2 => DuplexFlipShortEdge,
+        3 => DuplexFlipLongEdge,
+        _ => throw ArgumentError("Unknown value for _FPDF_DUPLEXTYPE_: $value"),
+      };
 }
 
 final class FPDF_BSTR_ extends ffi.Struct {
@@ -6413,9 +6478,19 @@ final class _FS_QUADPOINTSF extends ffi.Struct {
 typedef FS_FLOAT = ffi.Float;
 typedef DartFS_FLOAT = double;
 
-abstract class FPDF_RENDERER_TYPE {
-  static const int FPDF_RENDERERTYPE_AGG = 0;
-  static const int FPDF_RENDERERTYPE_SKIA = 1;
+enum FPDF_RENDERER_TYPE {
+  FPDF_RENDERERTYPE_AGG(0),
+  FPDF_RENDERERTYPE_SKIA(1);
+
+  final int value;
+  const FPDF_RENDERER_TYPE(this.value);
+
+  static FPDF_RENDERER_TYPE fromValue(int value) => switch (value) {
+        0 => FPDF_RENDERERTYPE_AGG,
+        1 => FPDF_RENDERERTYPE_SKIA,
+        _ =>
+          throw ArgumentError("Unknown value for FPDF_RENDERER_TYPE: $value"),
+      };
 }
 
 final class FPDF_LIBRARY_CONFIG_ extends ffi.Struct {
@@ -6431,8 +6506,11 @@ final class FPDF_LIBRARY_CONFIG_ extends ffi.Struct {
 
   external ffi.Pointer<ffi.Void> m_pPlatform;
 
-  @ffi.Int32()
-  external int m_RendererType;
+  @ffi.UnsignedInt()
+  external int m_RendererTypeAsInt;
+
+  FPDF_RENDERER_TYPE get m_RendererType =>
+      FPDF_RENDERER_TYPE.fromValue(m_RendererTypeAsInt);
 }
 
 typedef FPDF_LIBRARY_CONFIG = FPDF_LIBRARY_CONFIG_;
@@ -6515,13 +6593,6 @@ final class FPDF_COLORSCHEME_ extends ffi.Struct {
 
   @FPDF_DWORD()
   external int text_stroke_color;
-}
-
-typedef HDC = ffi.Pointer<HDC__>;
-
-final class HDC__ extends ffi.Struct {
-  @ffi.Int()
-  external int unused;
 }
 
 typedef FPDF_BITMAP = ffi.Pointer<fpdf_bitmap_t__>;
@@ -6868,26 +6939,6 @@ final class _FPDF_FORMFILLINFO extends ffi.Struct {
           ffi.Void Function(ffi.Pointer<_FPDF_FORMFILLINFO> param,
               FPDF_ANNOTATION annot, ffi.Int page_index)>> FFI_OnFocusChange;
 
-  /// Method: FFI_DoURIActionWithKeyboardModifier
-  /// Ask the implementation to navigate to a uniform resource identifier
-  /// with the specified modifiers.
-  /// Interface Version:
-  /// Ignored if |version| < 2.
-  /// Implementation Required:
-  /// No
-  /// Parameters:
-  /// param           -   Pointer to the interface structure itself.
-  /// uri             -   A byte string which indicates the uniform
-  /// resource identifier, terminated by 0.
-  /// modifiers       -   Keyboard modifier that indicates which of
-  /// the virtual keys are down, if any.
-  /// Return value:
-  /// None.
-  /// Comments:
-  /// If the embedder who is version 2 and does not implement this API,
-  /// then a call will be redirected to FFI_DoURIAction.
-  /// See the URI actions description of <<PDF Reference, version 1.7>>
-  /// for more details.
   external ffi.Pointer<
       ffi.NativeFunction<
           ffi.Void Function(
@@ -6909,9 +6960,19 @@ typedef FPDF_FORMHANDLE = ffi.Pointer<fpdf_form_handle_t__>;
 typedef FPDF_FORMFILLINFO = _FPDF_FORMFILLINFO;
 typedef FS_POINTF = FS_POINTF_;
 
-abstract class FPDFANNOT_COLORTYPE {
-  static const int FPDFANNOT_COLORTYPE_Color = 0;
-  static const int FPDFANNOT_COLORTYPE_InteriorColor = 1;
+enum FPDFANNOT_COLORTYPE {
+  FPDFANNOT_COLORTYPE_Color(0),
+  FPDFANNOT_COLORTYPE_InteriorColor(1);
+
+  final int value;
+  const FPDFANNOT_COLORTYPE(this.value);
+
+  static FPDFANNOT_COLORTYPE fromValue(int value) => switch (value) {
+        0 => FPDFANNOT_COLORTYPE_Color,
+        1 => FPDFANNOT_COLORTYPE_InteriorColor,
+        _ =>
+          throw ArgumentError("Unknown value for FPDFANNOT_COLORTYPE: $value"),
+      };
 }
 
 typedef FPDF_ANNOTATION_SUBTYPE = ffi.Int;
@@ -6928,9 +6989,18 @@ typedef FPDF_TEXTPAGE = ffi.Pointer<fpdf_textpage_t__>;
 typedef FPDF_SCHHANDLE = ffi.Pointer<fpdf_schhandle_t__>;
 typedef FPDF_PAGELINK = ffi.Pointer<fpdf_pagelink_t__>;
 
-abstract class FPDF_FILEIDTYPE {
-  static const int FILEIDTYPE_PERMANENT = 0;
-  static const int FILEIDTYPE_CHANGING = 1;
+enum FPDF_FILEIDTYPE {
+  FILEIDTYPE_PERMANENT(0),
+  FILEIDTYPE_CHANGING(1);
+
+  final int value;
+  const FPDF_FILEIDTYPE(this.value);
+
+  static FPDF_FILEIDTYPE fromValue(int value) => switch (value) {
+        0 => FILEIDTYPE_PERMANENT,
+        1 => FILEIDTYPE_CHANGING,
+        _ => throw ArgumentError("Unknown value for FPDF_FILEIDTYPE: $value"),
+      };
 }
 
 typedef FPDF_BOOKMARK = ffi.Pointer<fpdf_bookmark_t__>;
@@ -6963,6 +7033,18 @@ typedef FPDF_PAGEOBJECTMARK = ffi.Pointer<fpdf_pageobjectmark_t__>;
 typedef FPDF_PATHSEGMENT = ffi.Pointer<fpdf_pathsegment_t>;
 typedef FPDF_FONT = ffi.Pointer<fpdf_font_t__>;
 typedef FPDF_GLYPHPATH = ffi.Pointer<fpdf_glyphpath_t__>;
+
+final class FPDF_FILEWRITE_ extends ffi.Struct {
+  @ffi.Int()
+  external int version;
+
+  external ffi.Pointer<
+      ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<FPDF_FILEWRITE_> pThis,
+              ffi.Pointer<ffi.Void> pData, ffi.UnsignedLong size)>> WriteBlock;
+}
+
+typedef FPDF_FILEWRITE = FPDF_FILEWRITE_;
 
 const int FPDF_OBJECT_UNKNOWN = 0;
 
@@ -7363,3 +7445,9 @@ const int FPDF_PRINTMODE_EMF_IMAGE_MASKS = 6;
 const int FPDF_PRINTMODE_POSTSCRIPT3_TYPE42 = 7;
 
 const int FPDF_PRINTMODE_POSTSCRIPT3_TYPE42_PASSTHROUGH = 8;
+
+const int FPDF_INCREMENTAL = 1;
+
+const int FPDF_NO_INCREMENTAL = 2;
+
+const int FPDF_REMOVE_SECURITY = 3;

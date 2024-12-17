@@ -509,6 +509,25 @@ class PdfPageWeb extends PdfPage {
     // TODO: implement addPaths
     throw UnimplementedError();
   }
+
+  @override
+  Future<void> generateContent() {
+    // TODO: implement generateContent
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<Map<int, PdfPath>> loadPaths() {
+    // TODO: implement loadPaths
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> setActive(List<PdfPath> paths, bool active) {
+    // TODO: implement showPath
+    throw UnimplementedError();
+  }
+
 }
 
 class PdfPageRenderCancellationTokenWeb extends PdfPageRenderCancellationToken {

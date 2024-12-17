@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 // The trick to support Flutter Web is to use conditional import
 // Both of the files define PdfDocumentFactoryImpl class but only one of them is imported.
 import '../pdfrx.dart';
+import 'pdfium/worker.dart';
 import 'web/pdfrx_web.dart' if (dart.library.io) 'pdfium/pdfrx_pdfium.dart';
 
 /// Class to provide Pdfrx's configuration.
@@ -352,8 +353,11 @@ abstract class PdfPage {
   /// See [PdfLink.compact] for more info.
   Future<List<PdfLink>> loadLinks({bool compact = false});
 
+  Future<void> generateContent();
   Future<void> addPath(PdfPath path);
   Future<void> addPaths(List<PdfPath> paths);
+  Future<Map<int, PdfPath>> loadPaths();
+  Future<void> setActive(List<PdfPath> paths, bool active);
 }
 
 /// Page rotation.
@@ -1060,9 +1064,11 @@ class PdfPasswordException extends PdfException {
 }
 
 abstract class PdfPath {
-  PdfPath({this.fillType=PathFillType.nonZero});
+  PdfPath({this.fillType=PathFillType.nonZero, this.index, this.fillColor});
 
   final PathFillType fillType;
+  int? index;
+  Color? fillColor;
 
   /// Starts a new sub-path at the given coordinate.
   Future<void> moveTo(double x, double y);

@@ -57,6 +57,8 @@ ffigen:
       - "example/viewer/build/windows/x64/.lib/latest/include/fpdf_doc.h"
       - "example/viewer/build/windows/x64/.lib/latest/include/fpdf_edit.h"
       - "example/viewer/build/windows/x64/.lib/latest/include/fpdf_formfill.h"
+      - "example/viewer/build/windows/x64/.lib/latest/include/fpdf_formfill.h"
+      - "example/viewer/build/windows/x64/.lib/latest/include/fpdf_save.h"
     include-directives:
       - "example/viewer/build/windows/x64/.lib/latest/include/**"
   preamble: |
